@@ -1,0 +1,79 @@
+name: mcp-authz-proxy
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: mcp
+      POSTGRES_USER: mcp
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run python3 scripts/setup-demo.py}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./deploy/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U mcp -d mcp"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:7.4-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Run setup}
+    command: [sh, -c, 'exec redis-server --requirepass "$$REDIS_PASSWORD" --maxmemory 128mb --maxmemory-policy noeviction']
+    healthcheck:
+      test: [CMD-SHELL, 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.2.5
+    command: [start-dev, --import-realm]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Run setup}
+      KC_HOSTNAME: http://localhost:8082
+      KC_HEALTH_ENABLED: 'true'
+    ports: ['127.0.0.1:8082:8080']
+    volumes: ['./deploy/keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro']
+  demo-server:
+    build: .
+    entrypoint: [demo-server]
+    environment:
+      UPSTREAM_ALICE_TOKEN: ${UPSTREAM_ALICE_TOKEN:?Run setup}
+      UPSTREAM_BOB_TOKEN: ${UPSTREAM_BOB_TOKEN:?Run setup}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+  gateway:
+    build: .
+    ports: ['127.0.0.1:8080:8080']
+    environment:
+      CONFIG_FILE: /app/configs/compose.json
+      LISTEN_ADDR: :8080
+      METRICS_ADDR: :9090
+      DATABASE_URL: postgres://mcp:${POSTGRES_PASSWORD}@postgres:5432/mcp?sslmode=disable
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      UPSTREAM_ALICE_TOKEN: ${UPSTREAM_ALICE_TOKEN:?Run setup}
+      UPSTREAM_BOB_TOKEN: ${UPSTREAM_BOB_TOKEN:?Run setup}
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      demo-server: {condition: service_started}
+      keycloak: {condition: service_started}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+  prometheus:
+    image: prom/prometheus:v3.3.0
+    volumes: ['./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro']
+    ports: ['127.0.0.1:9091:9090']
+  grafana:
+    image: grafana/grafana:11.6.1
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?Run setup}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    ports: ['127.0.0.1:3000:3000']
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+volumes:
+  postgres-data:

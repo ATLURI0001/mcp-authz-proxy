@@ -1,0 +1,6 @@
+.env
+bin/
+coverage.out
+coverage.html
+*.log
+.DS_Store

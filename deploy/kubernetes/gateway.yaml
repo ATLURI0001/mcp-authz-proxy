@@ -1,0 +1,94 @@
+# Deployment template. See docs/DEPLOYMENT.md before applying.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mcp-authz
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gateway
+  namespace: mcp-authz
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: mcp-authz
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: mcp-authz-proxy}
+  template:
+    metadata:
+      labels: {app: mcp-authz-proxy}
+    spec:
+      serviceAccountName: gateway
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: gateway
+          image: ghcr.io/atluri0001/mcp-authz-proxy:0.1.0
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef: {name: gateway-secrets}
+          env:
+            - {name: CONFIG_FILE, value: /config/gateway.json}
+            - {name: LISTEN_ADDR, value: ':8080'}
+            - {name: METRICS_ADDR, value: ':9090'}
+          ports:
+            - {name: http, containerPort: 8080}
+            - {name: metrics, containerPort: 9090}
+          volumeMounts:
+            - {name: config, mountPath: /config, readOnly: true}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 100m, memory: 64Mi}
+            limits: {cpu: '1', memory: 256Mi}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+      volumes:
+        - name: config
+          configMap: {name: gateway-config}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+  namespace: mcp-authz
+spec:
+  selector: {app: mcp-authz-proxy}
+  ports:
+    - {name: http, port: 8080, targetPort: http}
+    - {name: metrics, port: 9090, targetPort: metrics}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gateway-ingress
+  namespace: mcp-authz
+spec:
+  podSelector:
+    matchLabels: {app: mcp-authz-proxy}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: ingress-nginx}
+      ports: [{protocol: TCP, port: 8080}]
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: monitoring}
+      ports: [{protocol: TCP, port: 9090}]
