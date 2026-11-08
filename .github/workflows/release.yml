@@ -28,7 +28,7 @@ jobs:
           for cmd in gateway demo-server admin; do
             go build -trimpath -o "dist/$cmd$suffix" "./cmd/$cmd"
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mcp-authz-proxy-${{ matrix.os }}-${{ matrix.arch }}
           path: dist/
