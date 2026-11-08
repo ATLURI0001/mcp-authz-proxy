@@ -63,7 +63,12 @@ func (s *memoryStore) Consume(_ context.Context, token, sub, digest string) (boo
 	s.used = true
 	return true, nil
 }
-func (s *memoryStore) Ready(context.Context) error { return nil }
+func (s *memoryStore) Ready(context.Context) error {
+	if s.down {
+		return errors.New("down")
+	}
+	return nil
+}
 func fixture(t *testing.T) (*Gateway, *memoryStore, *int) {
 	t.Helper()
 	calls := 0
@@ -317,5 +322,61 @@ func TestMetadataAndMethods(t *testing.T) {
 		if w.Code != 405 || *n != 0 {
 			t.Fatal(w.Code)
 		}
+	}
+}
+
+
+func TestHealthzAndReadyz(t *testing.T) {
+	g, s, _ := fixture(t)
+
+	// Test /healthz
+	w := httptest.NewRecorder()
+	g.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/healthz", nil))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "ok") {
+		t.Fatalf("healthz: got %d, %s", w.Code, w.Body)
+	}
+
+	// Test /readyz healthy
+	w = httptest.NewRecorder()
+	g.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/readyz", nil))
+	if w.Code != 200 {
+		t.Fatalf("readyz: got %d, %s", w.Code, w.Body)
+	}
+
+	// Test /readyz unhealthy when dependency is down
+	s.down = true
+	w = httptest.NewRecorder()
+	g.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/readyz", nil))
+	if w.Code != 503 {
+		t.Fatalf("readyz unhealthy: got %d, want 503", w.Code)
+	}
+}
+
+func TestMetricsEndpoint(t *testing.T) {
+	g, _, _ := fixture(t)
+
+	// Perform an allowed request to increment allowed counter
+	w := call(g, "alice", echo, nil)
+	if w.Code != 200 {
+		t.Fatalf("call: got %d", w.Code)
+	}
+
+	// Perform a denied request to increment denied counter
+	w = call(g, "bob", echo, nil)
+	if w.Code != 403 {
+		t.Fatalf("call: got %d", w.Code)
+	}
+
+	mw := httptest.NewRecorder()
+	g.Metrics().ServeHTTP(mw, httptest.NewRequest("GET", "/metrics", nil))
+	if mw.Code != 200 {
+		t.Fatalf("metrics: got %d", mw.Code)
+	}
+	body := mw.Body.String()
+	if !strings.Contains(body, `mcp_requests_total{result="allowed"} 1`) {
+		t.Fatalf("expected allowed metric count 1, got:\n%s", body)
+	}
+	if !strings.Contains(body, `mcp_requests_total{result="denied"} 1`) {
+		t.Fatalf("expected denied metric count 1, got:\n%s", body)
 	}
 }
