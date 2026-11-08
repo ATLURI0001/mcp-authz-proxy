@@ -43,6 +43,7 @@ Run the CLI inside the gateway container so it receives DATABASE_URL. For exampl
 
 ```bash
 docker compose exec gateway admin grant -subject 22222222-2222-4222-8222-222222222222 -tool echo
+docker compose exec gateway admin list -subject 22222222-2222-4222-8222-222222222222
 docker compose exec gateway admin revoke -subject 22222222-2222-4222-8222-222222222222 -tool echo
 docker compose exec gateway admin approve -subject 11111111-1111-4111-8111-111111111111 -tool restart_demo -params /app/configs/restart-params.json
 ```
