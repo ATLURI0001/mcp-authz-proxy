@@ -38,6 +38,7 @@ func runArgs(args []string, stdout io.Writer, dsn string) error {
 	sub := fs.String("subject", "", "exact issuer subject")
 	tool := fs.String("tool", "", "tool name")
 	params := fs.String("params", "", "complete tools/call params JSON file")
+	ttl := fs.Duration("ttl", 5*time.Minute, "approval token lifetime (default 5m, min 1m, max 24h)")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -53,6 +54,9 @@ func runArgs(args []string, stdout io.Writer, dsn string) error {
 		}
 		if *params == "" {
 			return fmt.Errorf("params file required for approve")
+		}
+		if *ttl < 1*time.Minute || *ttl > 24*time.Hour {
+			return fmt.Errorf("ttl must be between 1 minute and 24 hours")
 		}
 	case "list":
 		// subject and tool are optional filters
@@ -130,7 +134,8 @@ func runArgs(args []string, stdout io.Writer, dsn string) error {
 		}
 		raw := hex.EncodeToString(token)
 		hash := sha256.Sum256([]byte(raw))
-		_, err = p.Exec(ctx, `INSERT INTO approvals(token_hash,subject,digest,expires_at) VALUES($1,$2,$3,now()+interval '5 minutes')`, hex.EncodeToString(hash[:]), *sub, digest)
+		expiresAt := time.Now().UTC().Add(*ttl)
+		_, err = p.Exec(ctx, `INSERT INTO approvals(token_hash,subject,digest,expires_at) VALUES($1,$2,$3,$4)`, hex.EncodeToString(hash[:]), *sub, digest, expiresAt)
 		if err == nil {
 			fmt.Fprintln(stdout, raw)
 		}

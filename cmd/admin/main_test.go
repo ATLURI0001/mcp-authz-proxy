@@ -69,6 +69,24 @@ func TestRunArgs_Validation(t *testing.T) {
 			dsn:     "",
 			wantErr: "DATABASE_URL required",
 		},
+		{
+			name:    "approve ttl too low",
+			args:    []string{"approve", "-subject", "alice", "-tool", "echo", "-params", "p.json", "-ttl", "30s"},
+			dsn:     "postgres://test",
+			wantErr: "ttl must be between 1 minute and 24 hours",
+		},
+		{
+			name:    "approve ttl too high",
+			args:    []string{"approve", "-subject", "alice", "-tool", "echo", "-params", "p.json", "-ttl", "48h"},
+			dsn:     "postgres://test",
+			wantErr: "ttl must be between 1 minute and 24 hours",
+		},
+		{
+			name:    "approve negative ttl",
+			args:    []string{"approve", "-subject", "alice", "-tool", "echo", "-params", "p.json", "-ttl", "-5m"},
+			dsn:     "postgres://test",
+			wantErr: "ttl must be between 1 minute and 24 hours",
+		},
 	}
 
 	for _, tt := range tests {
