@@ -9,7 +9,16 @@ import (
 
 func TestConfigValidation(t *testing.T) {
 	t.Setenv("TEST_DOWNSTREAM_TOKEN", "a-valid-long-test-secret")
-	good := Config{Resource: "https://gateway.example/mcp", Issuer: "https://id.example", JWKSURL: "https://id.example/certs", Upstream: "https://upstream.example/mcp", Rate: 60, Tools: map[string]Rule{"echo": {Scope: "tools:read"}}, Credentials: map[string]string{"alice": "TEST_DOWNSTREAM_TOKEN"}}
+	good := Config{
+		Resource:    "https://gateway.example/mcp",
+		Issuer:      "https://id.example",
+		JWKSURL:     "https://id.example/certs",
+		Upstream:    "https://upstream.example/mcp",
+		Origins:     []string{"https://app.example.com", "https://client.example.com:8443"},
+		Rate:        60,
+		Tools:       map[string]Rule{"echo": {Scope: "tools:read"}},
+		Credentials: map[string]string{"alice": "TEST_DOWNSTREAM_TOKEN"},
+	}
 	for _, tt := range []struct {
 		name   string
 		change func(*Config)
@@ -21,6 +30,16 @@ func TestConfigValidation(t *testing.T) {
 		{"query", func(c *Config) { c.Upstream = "https://upstream.example/mcp?token=secret" }, false},
 		{"invalid rate", func(c *Config) { c.Rate = 0 }, false},
 		{"missing credential", func(c *Config) { c.Credentials = map[string]string{"alice": "ABSENT_TOKEN"} }, false},
+		{"origin with path", func(c *Config) { c.Origins = []string{"https://app.example.com/invalid/path"} }, false},
+		{"cleartext origin", func(c *Config) { c.Origins = []string{"http://insecure.example.com"} }, false},
+		{"cleartext origin allowed when allow_http is true", func(c *Config) {
+			c.AllowHTTP = true
+			c.Origins = []string{"http://localhost:3000"}
+			c.Resource = "http://gateway.example/mcp"
+			c.Issuer = "http://id.example"
+			c.JWKSURL = "http://id.example/certs"
+			c.Upstream = "http://upstream.example/mcp"
+		}, true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			c := good
@@ -32,7 +51,7 @@ func TestConfigValidation(t *testing.T) {
 			}
 			_, err := Load(path)
 			if (err == nil) != tt.ok {
-				t.Fatal(err)
+				t.Fatalf("Load(path) error = %v, expected ok = %v", err, tt.ok)
 			}
 		})
 	}

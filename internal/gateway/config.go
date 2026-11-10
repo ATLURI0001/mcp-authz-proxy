@@ -48,6 +48,15 @@ func Load(path string) (Config, error) {
 			return c, errors.New("HTTPS required; allow_http is local demo only")
 		}
 	}
+	for _, raw := range c.Origins {
+		u, e := url.Parse(raw)
+		if e != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
+			return c, fmt.Errorf("invalid configured origin %q", raw)
+		}
+		if u.Scheme != "https" && !(c.AllowHTTP && u.Scheme == "http") {
+			return c, fmt.Errorf("HTTPS required for origin %q; allow_http is local demo only", raw)
+		}
+	}
 	for name, rule := range c.Tools {
 		if name == "" || rule.Scope == "" || strings.ContainsAny(rule.Scope, " \"\r\n") {
 			return c, fmt.Errorf("invalid tool rule %q", name)
