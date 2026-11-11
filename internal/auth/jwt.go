@@ -30,22 +30,85 @@ type Claims struct {
 type JWT struct {
 	Issuer, Audience, JWKSURL string
 	Client                    *http.Client
+	Leeway                    time.Duration
 	mu                        sync.Mutex
 	keys                      map[string]*rsa.PublicKey
 	fetched                   time.Time
+	revMu                     sync.RWMutex
+	revoked                   map[string]time.Time
+}
+
+// Revoke adds a token JTI to the in-memory revocation cache until expiresAt,
+// automatically pruning any previously expired entries to bound memory usage.
+func (v *JWT) Revoke(jti string, expiresAt time.Time) {
+	if jti == "" {
+		return
+	}
+	now := time.Now()
+	if !expiresAt.After(now) {
+		return
+	}
+	v.revMu.Lock()
+	defer v.revMu.Unlock()
+	if v.revoked == nil {
+		v.revoked = make(map[string]time.Time)
+	}
+	for id, exp := range v.revoked {
+		if !exp.After(now) {
+			delete(v.revoked, id)
+		}
+	}
+	v.revoked[jti] = expiresAt
+}
+
+// PruneRevoked removes expired JTI revocation entries and returns the remaining active count.
+func (v *JWT) PruneRevoked(now time.Time) int {
+	v.revMu.Lock()
+	defer v.revMu.Unlock()
+	for id, exp := range v.revoked {
+		if !exp.After(now) {
+			delete(v.revoked, id)
+		}
+	}
+	return len(v.revoked)
+}
+
+// IsRevoked reports whether jti is currently actively revoked.
+func (v *JWT) IsRevoked(jti string) bool {
+	if jti == "" {
+		return false
+	}
+	now := time.Now()
+	v.revMu.RLock()
+	exp, exists := v.revoked[jti]
+	v.revMu.RUnlock()
+	return exists && exp.After(now)
 }
 
 func (v *JWT) Verify(ctx context.Context, raw string) (Identity, error) {
 	c := &Claims{}
+	opts := []jwt.ParserOption{
+		jwt.WithValidMethods([]string{"RS256"}),
+		jwt.WithIssuer(v.Issuer),
+		jwt.WithAudience(v.Audience),
+		jwt.WithExpirationRequired(),
+		jwt.WithIssuedAt(),
+	}
+	if v.Leeway > 0 {
+		opts = append(opts, jwt.WithLeeway(v.Leeway))
+	}
 	_, err := jwt.ParseWithClaims(raw, c, func(t *jwt.Token) (any, error) {
 		kid, ok := t.Header["kid"].(string)
 		if !ok || kid == "" {
 			return nil, errors.New("missing key id")
 		}
 		return v.key(ctx, kid)
-	}, jwt.WithValidMethods([]string{"RS256"}), jwt.WithIssuer(v.Issuer), jwt.WithAudience(v.Audience), jwt.WithExpirationRequired(), jwt.WithIssuedAt())
+	}, opts...)
 	if err != nil || c.Subject == "" {
 		return Identity{}, errors.New("invalid access token")
+	}
+	if c.ID != "" && v.IsRevoked(c.ID) {
+		return Identity{}, errors.New("token revoked")
 	}
 	scopes := map[string]bool{}
 	// OAuth scopes are space-delimited, not comma-separated.
