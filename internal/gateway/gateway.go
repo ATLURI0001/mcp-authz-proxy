@@ -127,16 +127,19 @@ func (g *Gateway) serve(w http.ResponseWriter, r *http.Request) {
 		deny(400, -32600, "query parameters are not accepted")
 		return
 	}
-	if origin := r.Header.Get("Origin"); origin != "" {
-		ok := false
-		for _, s := range g.Config.Origins {
-			if origin == s {
-				ok = true
+	if origins := r.Header.Values("Origin"); len(origins) > 0 {
+		for _, origin := range origins {
+			ok := false
+			for _, s := range g.Config.Origins {
+				if origin == s {
+					ok = true
+					break
+				}
 			}
-		}
-		if !ok {
-			deny(403, -32003, "origin denied")
-			return
+			if !ok {
+				deny(403, -32003, "origin denied")
+				return
+			}
 		}
 	}
 	if len(r.Header.Values("Authorization")) != 1 {
@@ -186,7 +189,7 @@ func (g *Gateway) serve(w http.ResponseWriter, r *http.Request) {
 		deny(415, -32600, "application/json required")
 		return
 	}
-	accept := r.Header.Get("Accept")
+	accept := strings.ToLower(strings.Join(r.Header.Values("Accept"), ", "))
 	if !strings.Contains(accept, "application/json") || !strings.Contains(accept, "text/event-stream") {
 		deny(406, -32600, "Accept must include application/json and text/event-stream")
 		return
