@@ -56,3 +56,38 @@ func TestConfigValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestConfigNormalizesOriginsAndRejectsBlankSubject(t *testing.T) {
+	t.Setenv("TEST_DOWNSTREAM_TOKEN", "a-valid-long-test-secret")
+	c := Config{
+		Resource:    "https://gateway.example/mcp",
+		Issuer:      "https://id.example",
+		JWKSURL:     "https://id.example/certs",
+		Upstream:    "https://upstream.example/mcp",
+		Origins:     []string{"HTTPS://APP.Example.COM/"},
+		Rate:        60,
+		Tools:       map[string]Rule{"echo": {Scope: "tools:read"}},
+		Credentials: map[string]string{"alice": "TEST_DOWNSTREAM_TOKEN"},
+	}
+	b, _ := json.Marshal(c)
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, b, 0600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load(path) unexpected error = %v", err)
+	}
+	if loaded.Origins[0] != "https://app.example.com" {
+		t.Fatalf("expected canonical origin https://app.example.com, got %q", loaded.Origins[0])
+	}
+
+	c.Credentials = map[string]string{"   ": "TEST_DOWNSTREAM_TOKEN"}
+	b, _ = json.Marshal(c)
+	if err := os.WriteFile(path, b, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected Load(path) to reject whitespace-only credential subject")
+	}
+}

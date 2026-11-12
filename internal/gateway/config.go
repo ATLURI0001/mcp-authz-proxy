@@ -48,14 +48,17 @@ func Load(path string) (Config, error) {
 			return c, errors.New("HTTPS required; allow_http is local demo only")
 		}
 	}
-	for _, raw := range c.Origins {
+	for i, raw := range c.Origins {
 		u, e := url.Parse(raw)
 		if e != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
 			return c, fmt.Errorf("invalid configured origin %q", raw)
 		}
-		if u.Scheme != "https" && !(c.AllowHTTP && u.Scheme == "http") {
+		scheme := strings.ToLower(u.Scheme)
+		if scheme != "https" && !(c.AllowHTTP && scheme == "http") {
 			return c, fmt.Errorf("HTTPS required for origin %q; allow_http is local demo only", raw)
 		}
+		// Canonicalize origin to lowercase scheme + host without trailing slash so exact Origin header matches succeed.
+		c.Origins[i] = scheme + "://" + strings.ToLower(u.Host)
 	}
 	for name, rule := range c.Tools {
 		if name == "" || rule.Scope == "" || strings.ContainsAny(rule.Scope, " \"\r\n") {
@@ -64,7 +67,7 @@ func Load(path string) (Config, error) {
 	}
 	for sub, env := range c.Credentials {
 		value := os.Getenv(env)
-		if sub == "" || len(value) < 16 || strings.ContainsAny(value, "\r\n") {
+		if strings.TrimSpace(sub) == "" || len(value) < 16 || strings.ContainsAny(value, "\r\n") {
 			return c, fmt.Errorf("missing or invalid credential environment variable %s", env)
 		}
 		c.Credentials[sub] = value
