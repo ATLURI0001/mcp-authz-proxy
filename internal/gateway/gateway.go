@@ -217,6 +217,10 @@ func (g *Gateway) serve(w http.ResponseWriter, r *http.Request) {
 			deny(400, -32600, "id must be string or number")
 			return
 		}
+		if dec.More() || dec.Decode(new(any)) != io.EOF {
+			deny(400, -32600, "invalid id")
+			return
+		}
 	}
 	// Whitelist methods before using them as log fields.
 	switch req.Method {

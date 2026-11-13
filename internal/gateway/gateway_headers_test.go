@@ -91,3 +91,35 @@ func TestGatewayRejectsNonObjectToolArguments(t *testing.T) {
 		t.Fatalf("expected error message to mention tool arguments object requirement, got %s", rr.Body.String())
 	}
 }
+
+func TestGatewayRejectsTrailingDataInID(t *testing.T) {
+	cfg := Config{
+		Resource: "https://mcp.example",
+		Issuer:   "https://auth.example",
+		Rate:     10,
+		Credentials: map[string]string{
+			"alice": "secret",
+		},
+	}
+	gw := New(cfg, fakeAuth{}, &memoryStore{})
+
+	// ID containing multiple tokens
+	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":"id1" "id2","method":"ping"}`)))
+	req.Header.Set("Authorization", "Bearer alice")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("MCP-Protocol-Version", Version)
+
+	rr := httptest.NewRecorder()
+	gw.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for trailing tokens in id, got %d", rr.Code)
+	}
+}
+
+func TestUnambiguousJSONEmptyPayload(t *testing.T) {
+	err := unambiguousJSON([]byte("   "))
+	if err == nil || err.Error() != "empty JSON payload" {
+		t.Fatalf("expected 'empty JSON payload' error, got %v", err)
+	}
+}
