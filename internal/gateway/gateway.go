@@ -253,6 +253,13 @@ func (g *Gateway) serve(w http.ResponseWriter, r *http.Request) {
 			deny(400, -32602, "invalid tool parameters")
 			return
 		}
+		if len(p.Arguments) > 0 && !bytes.Equal(bytes.TrimSpace(p.Arguments), []byte("null")) {
+			trimmed := bytes.TrimSpace(p.Arguments)
+			if len(trimmed) < 2 || trimmed[0] != '{' || trimmed[len(trimmed)-1] != '}' {
+				deny(400, -32602, "tool arguments must be a JSON object")
+				return
+			}
+		}
 		rule, exists := g.Config.Tools[p.Name]
 		if !exists {
 			deny(403, -32003, "tool denied")

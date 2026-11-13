@@ -60,3 +60,34 @@ func TestGatewayAcceptsSplitCaseInsensitiveAcceptHeaders(t *testing.T) {
 		t.Fatalf("expected split case-insensitive Accept headers to be accepted, got 406")
 	}
 }
+
+func TestGatewayRejectsNonObjectToolArguments(t *testing.T) {
+	cfg := Config{
+		Resource: "https://mcp.example",
+		Issuer:   "https://auth.example",
+		Rate:     10,
+		Credentials: map[string]string{
+			"alice": "secret",
+		},
+		Tools: map[string]Rule{
+			"echo": {Scope: "tools:read"},
+		},
+	}
+	gw := New(cfg, fakeAuth{}, &memoryStore{})
+
+	// Send an array for arguments instead of a JSON object
+	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"echo","arguments":[1,2,3]}}`)))
+	req.Header.Set("Authorization", "Bearer alice")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("MCP-Protocol-Version", Version)
+
+	rr := httptest.NewRecorder()
+	gw.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for array arguments, got %d (%s)", rr.Code, rr.Body.String())
+	}
+	if !bytes.Contains(rr.Body.Bytes(), []byte("tool arguments must be a JSON object")) {
+		t.Fatalf("expected error message to mention tool arguments object requirement, got %s", rr.Body.String())
+	}
+}
