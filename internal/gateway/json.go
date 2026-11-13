@@ -10,7 +10,11 @@ import (
 // Reject ambiguous JSON before policy parsing, approval hashing, and forwarding.
 // Otherwise the gateway and an upstream with another parser might disagree.
 func unambiguousJSON(b []byte) error {
-	d := json.NewDecoder(bytes.NewReader(b))
+	trimmed := bytes.TrimSpace(b)
+	if len(trimmed) == 0 {
+		return fmt.Errorf("empty JSON payload")
+	}
+	d := json.NewDecoder(bytes.NewReader(trimmed))
 	d.UseNumber()
 	var walk func(int) error
 	walk = func(depth int) error {
