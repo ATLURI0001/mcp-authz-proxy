@@ -145,3 +145,16 @@ func TestTokenRevocationAndLeeway(t *testing.T) {
 		t.Fatalf("expected 0 revoked entries after TTL eviction, got %d", remaining)
 	}
 }
+
+func TestSplitScopesWithPaddedWhitespace(t *testing.T) {
+	scopes := splitScopes("  mcp:connect \t  tools:read \n tools:write  ")
+	if len(scopes) != 3 {
+		t.Fatalf("expected 3 scopes, got %d: %v", len(scopes), scopes)
+	}
+	expected := []string{"mcp:connect", "tools:read", "tools:write"}
+	for i, exp := range expected {
+		if scopes[i] != exp {
+			t.Fatalf("at index %d: expected %q, got %q", i, exp, scopes[i])
+		}
+	}
+}

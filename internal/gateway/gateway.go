@@ -130,8 +130,9 @@ func (g *Gateway) serve(w http.ResponseWriter, r *http.Request) {
 	if origins := r.Header.Values("Origin"); len(origins) > 0 {
 		for _, origin := range origins {
 			ok := false
+			normOrigin := strings.ToLower(strings.TrimRight(origin, "/"))
 			for _, s := range g.Config.Origins {
-				if origin == s {
+				if normOrigin == s {
 					ok = true
 					break
 				}
