@@ -10,6 +10,7 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -118,17 +119,7 @@ func (v *JWT) Verify(ctx context.Context, raw string) (Identity, error) {
 	return Identity{c.Subject, scopes}, nil
 }
 func splitScopes(s string) []string {
-	var out []string
-	start := 0
-	for i := 0; i <= len(s); i++ {
-		if i == len(s) || s[i] == ' ' {
-			if i > start {
-				out = append(out, s[start:i])
-			}
-			start = i + 1
-		}
-	}
-	return out
+	return strings.Fields(s)
 }
 func (v *JWT) key(ctx context.Context, kid string) (*rsa.PublicKey, error) {
 	v.mu.Lock()

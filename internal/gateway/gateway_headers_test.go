@@ -123,3 +123,33 @@ func TestUnambiguousJSONEmptyPayload(t *testing.T) {
 		t.Fatalf("expected 'empty JSON payload' error, got %v", err)
 	}
 }
+
+func TestGatewayOriginCaseInsensitiveAndTrailingSlash(t *testing.T) {
+	cfg := Config{
+		Resource: "https://mcp.example",
+		Issuer:   "https://auth.example",
+		Origins:  []string{"https://allowed.example"},
+		Rate:     10,
+		Credentials: map[string]string{
+			"alice": "secret",
+		},
+		Tools: map[string]Rule{
+			"echo": {Scope: "tools:read"},
+		},
+	}
+	gw := New(cfg, fakeAuth{}, &memoryStore{})
+
+	// Uppercase and trailing slash should match canonical https://allowed.example
+	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25"}}`)))
+	req.Header.Set("Origin", "HTTPS://ALLOWED.EXAMPLE/")
+	req.Header.Set("Authorization", "Bearer alice")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("MCP-Protocol-Version", Version)
+
+	rr := httptest.NewRecorder()
+	gw.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for case-insensitive origin with trailing slash, got %d (%s)", rr.Code, rr.Body.String())
+	}
+}
