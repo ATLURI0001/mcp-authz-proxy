@@ -6,7 +6,7 @@ COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/gateway ./cmd/gateway && \
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/demo-server ./cmd/demo-server && \
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/admin ./cmd/admin
-FROM alpine:3.22
+FROM alpine:3.24
 RUN apk add --no-cache ca-certificates && adduser -D -u 10001 app
 COPY --from=build /out/ /usr/local/bin/
 WORKDIR /app
