@@ -42,6 +42,7 @@ type JWT struct {
 // Revoke adds a token JTI to the in-memory revocation cache until expiresAt,
 // automatically pruning any previously expired entries to bound memory usage.
 func (v *JWT) Revoke(jti string, expiresAt time.Time) {
+	jti = strings.TrimSpace(jti)
 	if jti == "" {
 		return
 	}
@@ -76,6 +77,7 @@ func (v *JWT) PruneRevoked(now time.Time) int {
 
 // IsRevoked reports whether jti is currently actively revoked.
 func (v *JWT) IsRevoked(jti string) bool {
+	jti = strings.TrimSpace(jti)
 	if jti == "" {
 		return false
 	}
@@ -87,6 +89,10 @@ func (v *JWT) IsRevoked(jti string) bool {
 }
 
 func (v *JWT) Verify(ctx context.Context, raw string) (Identity, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return Identity{}, errors.New("invalid access token")
+	}
 	c := &Claims{}
 	opts := []jwt.ParserOption{
 		jwt.WithValidMethods([]string{"RS256"}),
@@ -105,7 +111,7 @@ func (v *JWT) Verify(ctx context.Context, raw string) (Identity, error) {
 		}
 		return v.key(ctx, kid)
 	}, opts...)
-	if err != nil || c.Subject == "" {
+	if err != nil || strings.TrimSpace(c.Subject) == "" {
 		return Identity{}, errors.New("invalid access token")
 	}
 	if c.ID != "" && v.IsRevoked(c.ID) {
@@ -116,7 +122,7 @@ func (v *JWT) Verify(ctx context.Context, raw string) (Identity, error) {
 	for _, s := range splitScopes(c.Scope) {
 		scopes[s] = true
 	}
-	return Identity{c.Subject, scopes}, nil
+	return Identity{strings.TrimSpace(c.Subject), scopes}, nil
 }
 func splitScopes(s string) []string {
 	return strings.Fields(s)

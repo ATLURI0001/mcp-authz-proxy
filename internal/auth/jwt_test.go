@@ -158,3 +158,53 @@ func TestSplitScopesWithPaddedWhitespace(t *testing.T) {
 		}
 	}
 }
+
+func TestTokenVerificationWithSurroundingWhitespaceAndPaddedJTI(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []any{map[string]string{"kty": "RSA", "kid": "key1", "alg": "RS256", "n": base64.RawURLEncoding.EncodeToString(key.N.Bytes()), "e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes())}}})
+	}))
+	defer server.Close()
+
+	claims := Claims{
+		Scope: "tools:read",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    "https://issuer",
+			Subject:   "  carol  ",
+			ID:        "jti-padded-test",
+			Audience:  jwt.ClaimStrings{"https://gateway/mcp"},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now().Add(-time.Minute)),
+		},
+	}
+	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	tok.Header["kid"] = "key1"
+	raw, err := tok.SignedString(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	v := &JWT{Issuer: "https://issuer", Audience: "https://gateway/mcp", JWKSURL: server.URL}
+
+	// Verify with surrounding whitespace around raw token
+	paddedToken := "  \n\t" + raw + " \r\n"
+	identity, err := v.Verify(context.Background(), paddedToken)
+	if err != nil {
+		t.Fatalf("expected padded raw token to verify: %v", err)
+	}
+	if identity.Subject != "carol" {
+		t.Fatalf("expected trimmed subject 'carol', got %q", identity.Subject)
+	}
+
+	// Revoke using whitespace-padded JTI
+	v.Revoke("  jti-padded-test  \t", time.Now().Add(time.Hour))
+	if !v.IsRevoked("jti-padded-test") {
+		t.Fatal("expected jti-padded-test to be recognized as revoked")
+	}
+	if _, err := v.Verify(context.Background(), raw); err == nil {
+		t.Fatal("expected revoked token to fail verification")
+	}
+}
