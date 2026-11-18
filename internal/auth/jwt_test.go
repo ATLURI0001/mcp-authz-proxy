@@ -42,6 +42,8 @@ func TestTokenValidation(t *testing.T) {
 		{"future not before", func(c *Claims) { c.NotBefore = jwt.NewNumericDate(time.Now().Add(time.Hour)) }, jwt.SigningMethodRS256, "key1", false},
 		{"missing subject", func(c *Claims) { c.Subject = "" }, jwt.SigningMethodRS256, "key1", false},
 		{"unknown kid", func(*Claims) {}, jwt.SigningMethodRS256, "other", false},
+		{"empty kid", func(*Claims) {}, jwt.SigningMethodRS256, "", false},
+		{"whitespace kid", func(*Claims) {}, jwt.SigningMethodRS256, "   ", false},
 		{"algorithm confusion", func(*Claims) {}, jwt.SigningMethodHS256, "key1", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
