@@ -87,6 +87,30 @@ func TestRunArgs_Validation(t *testing.T) {
 			dsn:     "postgres://test",
 			wantErr: "ttl must be between 1 minute and 24 hours",
 		},
+		{
+			name:    "grant whitespace subject",
+			args:    []string{"grant", "-subject", "   ", "-tool", "echo"},
+			dsn:     "postgres://test",
+			wantErr: "subject and tool required",
+		},
+		{
+			name:    "grant whitespace tool",
+			args:    []string{"grant", "-subject", "alice", "-tool", "   "},
+			dsn:     "postgres://test",
+			wantErr: "subject and tool required",
+		},
+		{
+			name:    "revoke whitespace subject",
+			args:    []string{"revoke", "-subject", "\t  ", "-tool", "echo"},
+			dsn:     "postgres://test",
+			wantErr: "subject and tool required",
+		},
+		{
+			name:    "approve whitespace subject",
+			args:    []string{"approve", "-subject", "   ", "-tool", "echo", "-params", "p.json"},
+			dsn:     "postgres://test",
+			wantErr: "subject and tool required",
+		},
 	}
 
 	for _, tt := range tests {
