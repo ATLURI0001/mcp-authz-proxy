@@ -105,7 +105,8 @@ func (v *JWT) Verify(ctx context.Context, raw string) (Identity, error) {
 		opts = append(opts, jwt.WithLeeway(v.Leeway))
 	}
 	_, err := jwt.ParseWithClaims(raw, c, func(t *jwt.Token) (any, error) {
-		kid, ok := t.Header["kid"].(string)
+		rawKid, ok := t.Header["kid"].(string)
+		kid := strings.TrimSpace(rawKid)
 		if !ok || kid == "" {
 			return nil, errors.New("missing key id")
 		}
@@ -128,6 +129,10 @@ func splitScopes(s string) []string {
 	return strings.Fields(s)
 }
 func (v *JWT) key(ctx context.Context, kid string) (*rsa.PublicKey, error) {
+	kid = strings.TrimSpace(kid)
+	if kid == "" {
+		return nil, errors.New("missing key id")
+	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	// Bound refreshes, including unknown kid attacks. Rotation overlap should exceed 60s.
@@ -165,7 +170,8 @@ func (v *JWT) key(ctx context.Context, kid string) (*rsa.PublicKey, error) {
 	}
 	keys := map[string]*rsa.PublicKey{}
 	for _, j := range set.Keys {
-		if j.Kty != "RSA" || j.Kid == "" || (j.Use != "" && j.Use != "sig") || (j.Alg != "" && j.Alg != "RS256") {
+		kid := strings.TrimSpace(j.Kid)
+		if j.Kty != "RSA" || kid == "" || (j.Use != "" && j.Use != "sig") || (j.Alg != "" && j.Alg != "RS256") {
 			continue
 		}
 		n, e1 := base64.RawURLEncoding.DecodeString(j.N)
@@ -181,10 +187,10 @@ func (v *JWT) key(ctx context.Context, kid string) (*rsa.PublicKey, error) {
 		if modulus.BitLen() < 2048 || exponent < 3 || exponent%2 == 0 {
 			continue
 		}
-		if _, exists := keys[j.Kid]; exists {
+		if _, exists := keys[kid]; exists {
 			return nil, errors.New("duplicate key id")
 		}
-		keys[j.Kid] = &rsa.PublicKey{N: modulus, E: exponent}
+		keys[kid] = &rsa.PublicKey{N: modulus, E: exponent}
 	}
 	v.keys = keys
 	v.fetched = time.Now()
