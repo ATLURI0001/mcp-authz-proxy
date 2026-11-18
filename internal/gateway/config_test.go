@@ -91,3 +91,39 @@ func TestConfigNormalizesOriginsAndRejectsBlankSubject(t *testing.T) {
 		t.Fatal("expected Load(path) to reject whitespace-only credential subject")
 	}
 }
+
+func TestConfigRejectsWhitespaceToolNameAndTrimsCredentialSubject(t *testing.T) {
+	t.Setenv("TEST_DOWNSTREAM_TOKEN", "a-valid-long-test-secret")
+	c := Config{
+		Resource:    "https://gateway.example/mcp",
+		Issuer:      "https://id.example",
+		JWKSURL:     "https://id.example/certs",
+		Upstream:    "https://upstream.example/mcp",
+		Origins:     []string{"https://app.example.com"},
+		Rate:        60,
+		Tools:       map[string]Rule{"echo ": {Scope: "tools:read"}},
+		Credentials: map[string]string{"alice": "TEST_DOWNSTREAM_TOKEN"},
+	}
+	b, _ := json.Marshal(c)
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, b, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected Load(path) to reject tool name with trailing whitespace")
+	}
+
+	c.Tools = map[string]Rule{"echo": {Scope: "tools:read"}}
+	c.Credentials = map[string]string{"  alice  ": "TEST_DOWNSTREAM_TOKEN"}
+	b, _ = json.Marshal(c)
+	if err := os.WriteFile(path, b, 0600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected Load error: %v", err)
+	}
+	if _, ok := loaded.Credentials["alice"]; !ok {
+		t.Fatalf("expected credential subject to be normalized to 'alice', got keys: %v", loaded.Credentials)
+	}
+}

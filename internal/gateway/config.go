@@ -61,16 +61,20 @@ func Load(path string) (Config, error) {
 		c.Origins[i] = scheme + "://" + strings.ToLower(u.Host)
 	}
 	for name, rule := range c.Tools {
-		if name == "" || rule.Scope == "" || strings.ContainsAny(rule.Scope, " \"\r\n") {
+		trimmedName := strings.TrimSpace(name)
+		if trimmedName == "" || trimmedName != name || strings.ContainsAny(name, " \t\r\n") || rule.Scope == "" || strings.ContainsAny(rule.Scope, " \"\r\n") {
 			return c, fmt.Errorf("invalid tool rule %q", name)
 		}
 	}
+	normalizedCreds := make(map[string]string, len(c.Credentials))
 	for sub, env := range c.Credentials {
+		trimmedSub := strings.TrimSpace(sub)
 		value := os.Getenv(env)
-		if strings.TrimSpace(sub) == "" || len(value) < 16 || strings.ContainsAny(value, "\r\n") {
+		if trimmedSub == "" || len(value) < 16 || strings.ContainsAny(value, "\r\n") {
 			return c, fmt.Errorf("missing or invalid credential environment variable %s", env)
 		}
-		c.Credentials[sub] = value
+		normalizedCreds[trimmedSub] = value
 	}
+	c.Credentials = normalizedCreds
 	return c, nil
 }
