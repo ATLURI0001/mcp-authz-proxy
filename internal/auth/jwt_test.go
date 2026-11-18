@@ -6,13 +6,15 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
-	"github.com/golang-jwt/jwt/v5"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 func TestTokenValidation(t *testing.T) {
@@ -208,5 +210,40 @@ func TestTokenVerificationWithSurroundingWhitespaceAndPaddedJTI(t *testing.T) {
 	}
 	if _, err := v.Verify(context.Background(), raw); err == nil {
 		t.Fatal("expected revoked token to fail verification")
+	}
+}
+
+func TestIdentityScopesAndEmptyJWKS(t *testing.T) {
+	id := Identity{
+		Subject: "alice",
+		Scopes: map[string]bool{
+			"tools:read":    true,
+			"tools:call":    true,
+			"admin:disable": false,
+		},
+	}
+
+	if !id.HasScope("tools:read") {
+		t.Error("expected identity to have tools:read")
+	}
+	if !id.HasScope("  tools:call  ") {
+		t.Error("expected identity to match padded tools:call")
+	}
+	if id.HasScope("admin:disable") {
+		t.Error("expected false scope to be reported as absent")
+	}
+	if id.HasScope("unknown:scope") {
+		t.Error("expected unlisted scope to be reported as absent")
+	}
+
+	scopes := id.ScopeList()
+	if len(scopes) != 2 || scopes[0] != "tools:call" || scopes[1] != "tools:read" {
+		t.Fatalf("unexpected sorted scopes: %v", scopes)
+	}
+
+	// Empty JWKSURL check
+	emptyJWKS := &JWT{Issuer: "https://issuer", Audience: "https://gateway", JWKSURL: "   "}
+	if _, err := emptyJWKS.key(context.Background(), "key1"); err == nil || !strings.Contains(err.Error(), "JWKS URL not configured") {
+		t.Fatalf("expected 'JWKS URL not configured' error, got %v", err)
 	}
 }

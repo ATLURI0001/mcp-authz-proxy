@@ -10,6 +10,7 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +21,29 @@ import (
 type Identity struct {
 	Subject string
 	Scopes  map[string]bool
+}
+
+// HasScope reports whether the identity includes the specified scope.
+func (id Identity) HasScope(scope string) bool {
+	if id.Scopes == nil {
+		return false
+	}
+	return id.Scopes[strings.TrimSpace(scope)]
+}
+
+// ScopeList returns a sorted list of scopes associated with the identity.
+func (id Identity) ScopeList() []string {
+	if len(id.Scopes) == 0 {
+		return nil
+	}
+	list := make([]string, 0, len(id.Scopes))
+	for s, ok := range id.Scopes {
+		if ok {
+			list = append(list, s)
+		}
+	}
+	sort.Strings(list)
+	return list
 }
 type Verifier interface {
 	Verify(context.Context, string) (Identity, error)
@@ -132,6 +156,9 @@ func (v *JWT) key(ctx context.Context, kid string) (*rsa.PublicKey, error) {
 	kid = strings.TrimSpace(kid)
 	if kid == "" {
 		return nil, errors.New("missing key id")
+	}
+	if strings.TrimSpace(v.JWKSURL) == "" {
+		return nil, errors.New("JWKS URL not configured")
 	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
