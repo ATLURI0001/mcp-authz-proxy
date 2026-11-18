@@ -68,3 +68,38 @@ func TestIntegration(t *testing.T) {
 		}
 	}
 }
+
+func TestDB_FastPathValidation(t *testing.T) {
+	ctx := context.Background()
+	db := &DB{} // No connection needed for fast path validation
+
+	// Allow should reject blank subject or tool without hitting database
+	ok, err := db.Allow(ctx, "", "echo")
+	if ok || err != nil {
+		t.Fatalf("expected false, nil for empty subject, got %v, %v", ok, err)
+	}
+	ok, err = db.Allow(ctx, "alice", "   ")
+	if ok || err != nil {
+		t.Fatalf("expected false, nil for empty tool, got %v, %v", ok, err)
+	}
+
+	// Consume should reject blank token, subject, or digest
+	ok, err = db.Consume(ctx, "   ", "alice", "digest")
+	if ok || err != nil {
+		t.Fatalf("expected false, nil for blank token, got %v, %v", ok, err)
+	}
+	ok, err = db.Consume(ctx, "token", "", "digest")
+	if ok || err != nil {
+		t.Fatalf("expected false, nil for blank subject, got %v, %v", ok, err)
+	}
+	ok, err = db.Consume(ctx, "token", "alice", "  ")
+	if ok || err != nil {
+		t.Fatalf("expected false, nil for blank digest, got %v, %v", ok, err)
+	}
+
+	// Audit should reject blank event ID
+	err = db.Audit(ctx, Event{ID: "   ", Decision: "allow"})
+	if err == nil || err.Error() != "audit event missing request id" {
+		t.Fatalf("expected missing request id error, got %v", err)
+	}
+}
