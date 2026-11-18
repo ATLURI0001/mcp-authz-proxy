@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -46,6 +47,7 @@ func runArgs(args []string, stdout io.Writer, dsn string) error {
 
 	*sub = strings.TrimSpace(*sub)
 	*tool = strings.TrimSpace(*tool)
+	*params = strings.TrimSpace(*params)
 
 	switch cmd {
 	case "grant", "revoke":
@@ -121,11 +123,14 @@ func runArgs(args []string, stdout io.Writer, dsn string) error {
 		if e != nil {
 			return e
 		}
+		if len(bytes.TrimSpace(b)) == 0 {
+			return fmt.Errorf("params file is empty")
+		}
 		// Operator must review the entire file, including arguments, before approving.
 		var input struct {
 			Name string `json:"name"`
 		}
-		if e = json.Unmarshal(b, &input); e != nil || input.Name != *tool {
+		if e = json.Unmarshal(b, &input); e != nil || strings.TrimSpace(input.Name) != *tool {
 			return fmt.Errorf("params tool does not match -tool")
 		}
 		digest, e := gateway.Digest(b)

@@ -111,6 +111,12 @@ func TestRunArgs_Validation(t *testing.T) {
 			dsn:     "postgres://test",
 			wantErr: "subject and tool required",
 		},
+		{
+			name:    "approve whitespace params",
+			args:    []string{"approve", "-subject", "alice", "-tool", "echo", "-params", "   "},
+			dsn:     "postgres://test",
+			wantErr: "params file required for approve",
+		},
 	}
 
 	for _, tt := range tests {
@@ -149,5 +155,22 @@ func TestRunArgs_ApproveFileNotFound(t *testing.T) {
 	err := runArgs([]string{"approve", "-subject", "alice", "-tool", "echo", "-params", "non_existent_file.json"}, &out, "postgres://fake")
 	if err == nil {
 		t.Fatal("expected file not found error, got nil")
+	}
+}
+
+func TestRunArgs_ApproveEmptyParamsFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	emptyFile := filepath.Join(tmpDir, "empty.json")
+	if err := os.WriteFile(emptyFile, []byte("   \n\t  "), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	err := runArgs([]string{"approve", "-subject", "alice", "-tool", "echo", "-params", emptyFile}, &out, "postgres://fake")
+	if err == nil {
+		t.Fatal("expected empty params error, got nil")
+	}
+	if !strings.Contains(err.Error(), "params file is empty") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
