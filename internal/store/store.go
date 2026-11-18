@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -57,11 +59,20 @@ func (d *DB) Ready(ctx context.Context) error {
 	return d.Redis.Ping(ctx).Err()
 }
 func (d *DB) Allow(ctx context.Context, sub, tool string) (bool, error) {
+	sub = strings.TrimSpace(sub)
+	tool = strings.TrimSpace(tool)
+	if sub == "" || tool == "" {
+		return false, nil
+	}
 	var ok bool
 	err := d.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM grants WHERE subject=$1 AND tool=$2)`, sub, tool).Scan(&ok)
 	return ok, err
 }
 func (d *DB) Audit(ctx context.Context, e Event) error {
+	e.ID = strings.TrimSpace(e.ID)
+	if e.ID == "" {
+		return errors.New("audit event missing request id")
+	}
 	b, err := json.Marshal(e)
 	if err != nil {
 		return err
@@ -79,6 +90,12 @@ func (d *DB) Limit(ctx context.Context, sub string, max int) (bool, error) {
 	return n <= int64(max), err
 }
 func (d *DB) Consume(ctx context.Context, token, sub, digest string) (bool, error) {
+	token = strings.TrimSpace(token)
+	sub = strings.TrimSpace(sub)
+	digest = strings.TrimSpace(digest)
+	if token == "" || sub == "" || digest == "" {
+		return false, nil
+	}
 	h := sha256.Sum256([]byte(token))
 	tag, err := d.Pool.Exec(ctx, `DELETE FROM approvals WHERE token_hash=$1 AND subject=$2 AND digest=$3 AND expires_at>now()`, hex.EncodeToString(h[:]), sub, digest)
 	return tag.RowsAffected() == 1, err
