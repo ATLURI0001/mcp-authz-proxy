@@ -301,6 +301,20 @@ func TestDigestCanonicalization(t *testing.T) {
 	if c == d {
 		t.Fatal("numeric precision loss")
 	}
+
+	// Empty and whitespace payloads
+	if _, err := Digest([]byte("")); err == nil {
+		t.Fatal("expected error on empty payload")
+	}
+	if _, err := Digest([]byte("   \n\t ")); err == nil {
+		t.Fatal("expected error on whitespace payload")
+	}
+
+	// Oversize payload exceeding 256KB
+	oversize := bytes.Repeat([]byte(" "), 262145)
+	if _, err := Digest(oversize); err == nil {
+		t.Fatal("expected error on oversize payload")
+	}
 }
 
 func TestAmbiguousJSONRejected(t *testing.T) {

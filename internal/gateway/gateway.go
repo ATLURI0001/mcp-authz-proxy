@@ -449,6 +449,12 @@ func (g *Gateway) upstreamError(w http.ResponseWriter, id json.RawMessage, e sto
 // Digest binds approvals to the entire params object using Go's stable JSON encoding.
 // json.Number prevents float rounding; object key order is normalized, arrays are not.
 func Digest(raw []byte) (string, error) {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return "", fmt.Errorf("empty payload")
+	}
+	if len(raw) > 262144 {
+		return "", fmt.Errorf("payload exceeds 256KB limit")
+	}
 	if err := unambiguousJSON(raw); err != nil {
 		return "", err
 	}
