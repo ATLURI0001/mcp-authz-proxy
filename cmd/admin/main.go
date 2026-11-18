@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/ATLURI0001/mcp-authz-proxy/internal/gateway"
@@ -42,6 +43,9 @@ func runArgs(args []string, stdout io.Writer, dsn string) error {
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
+
+	*sub = strings.TrimSpace(*sub)
+	*tool = strings.TrimSpace(*tool)
 
 	switch cmd {
 	case "grant", "revoke":
