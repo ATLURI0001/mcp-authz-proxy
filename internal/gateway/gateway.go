@@ -298,10 +298,18 @@ func (g *Gateway) serve(w http.ResponseWriter, r *http.Request) {
 				deny(400, -32602, "invalid parameters")
 				return
 			}
-			token := r.Header.Get("X-Approval-Token")
-			if len(token) != 64 {
+			tokens := r.Header.Values("X-Approval-Token")
+			if len(tokens) != 1 || len(tokens[0]) != 64 {
 				deny(403, -32003, "approval required")
 				return
+			}
+			token := tokens[0]
+			for i := 0; i < len(token); i++ {
+				c := token[i]
+				if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+					deny(403, -32003, "approval required")
+					return
+				}
 			}
 			ok, err = g.Store.Consume(r.Context(), token, ident.Subject, digest)
 			if err != nil {

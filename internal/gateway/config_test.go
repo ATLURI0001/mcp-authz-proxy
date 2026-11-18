@@ -115,6 +115,7 @@ func TestConfigRejectsWhitespaceToolNameAndTrimsCredentialSubject(t *testing.T) 
 
 	c.Tools = map[string]Rule{"echo": {Scope: "tools:read"}}
 	c.Credentials = map[string]string{"  alice  ": "TEST_DOWNSTREAM_TOKEN"}
+	c.Origins = []string{"https://app.example.com", "  https://app.example.com/  ", "https://other.example.com"}
 	b, _ = json.Marshal(c)
 	if err := os.WriteFile(path, b, 0600); err != nil {
 		t.Fatal(err)
@@ -125,5 +126,8 @@ func TestConfigRejectsWhitespaceToolNameAndTrimsCredentialSubject(t *testing.T) 
 	}
 	if _, ok := loaded.Credentials["alice"]; !ok {
 		t.Fatalf("expected credential subject to be normalized to 'alice', got keys: %v", loaded.Credentials)
+	}
+	if len(loaded.Origins) != 2 || loaded.Origins[0] != "https://app.example.com" || loaded.Origins[1] != "https://other.example.com" {
+		t.Fatalf("expected deduplicated origins [https://app.example.com, https://other.example.com], got %v", loaded.Origins)
 	}
 }

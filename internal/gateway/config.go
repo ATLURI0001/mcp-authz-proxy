@@ -48,7 +48,10 @@ func Load(path string) (Config, error) {
 			return c, errors.New("HTTPS required; allow_http is local demo only")
 		}
 	}
-	for i, raw := range c.Origins {
+	seenOrigins := make(map[string]bool, len(c.Origins))
+	canonicalOrigins := make([]string, 0, len(c.Origins))
+	for _, raw := range c.Origins {
+		raw = strings.TrimSpace(raw)
 		u, e := url.Parse(raw)
 		if e != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
 			return c, fmt.Errorf("invalid configured origin %q", raw)
@@ -58,8 +61,13 @@ func Load(path string) (Config, error) {
 			return c, fmt.Errorf("HTTPS required for origin %q; allow_http is local demo only", raw)
 		}
 		// Canonicalize origin to lowercase scheme + host without trailing slash so exact Origin header matches succeed.
-		c.Origins[i] = scheme + "://" + strings.ToLower(u.Host)
+		canonical := scheme + "://" + strings.ToLower(u.Host)
+		if !seenOrigins[canonical] {
+			seenOrigins[canonical] = true
+			canonicalOrigins = append(canonicalOrigins, canonical)
+		}
 	}
+	c.Origins = canonicalOrigins
 	for name, rule := range c.Tools {
 		trimmedName := strings.TrimSpace(name)
 		if trimmedName == "" || trimmedName != name || strings.ContainsAny(name, " \t\r\n") || rule.Scope == "" || strings.ContainsAny(rule.Scope, " \"\r\n") {
