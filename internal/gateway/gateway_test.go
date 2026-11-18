@@ -203,6 +203,13 @@ func TestApprovalBindingAndReplay(t *testing.T) {
 }
 func TestProtocolLifecycle(t *testing.T) {
 	g, _, n := fixture(t)
+
+	// Whitespace or empty protocolVersion must be rejected with 400
+	wBlank := call(g, "alice", `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"   "}}`, nil)
+	if wBlank.Code != 400 || !strings.Contains(wBlank.Body.String(), "protocolVersion required") {
+		t.Fatalf("expected 400 for whitespace protocolVersion, got %d: %s", wBlank.Code, wBlank.Body.String())
+	}
+
 	w := call(g, "alice", `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}`, nil)
 	if w.Code != 200 || !strings.Contains(w.Body.String(), Version) {
 		t.Fatal(w.Code, w.Body)

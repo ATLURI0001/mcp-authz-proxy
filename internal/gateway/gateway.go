@@ -326,7 +326,7 @@ func (g *Gateway) serve(w http.ResponseWriter, r *http.Request) {
 		var p struct {
 			ProtocolVersion string `json:"protocolVersion"`
 		}
-		if json.Unmarshal(req.Params, &p) != nil || p.ProtocolVersion == "" {
+		if json.Unmarshal(req.Params, &p) != nil || strings.TrimSpace(p.ProtocolVersion) == "" {
 			rpcError(w, 400, -32602, req.ID, "protocolVersion required")
 			return
 		}
