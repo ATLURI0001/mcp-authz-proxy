@@ -185,6 +185,10 @@ func (g *Gateway) serve(w http.ResponseWriter, r *http.Request) {
 		deny(400, -32600, "sessions are not supported")
 		return
 	}
+	if len(r.Header.Values("Content-Type")) != 1 {
+		deny(415, -32600, "application/json required")
+		return
+	}
 	ct, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if ct != "application/json" {
 		deny(415, -32600, "application/json required")
@@ -231,9 +235,12 @@ func (g *Gateway) serve(w http.ResponseWriter, r *http.Request) {
 		deny(400, -32601, "method not supported")
 		return
 	}
-	if req.Method != "initialize" && r.Header.Get("MCP-Protocol-Version") != Version {
-		deny(400, -32600, "unsupported or missing MCP-Protocol-Version")
-		return
+	if req.Method != "initialize" {
+		versions := r.Header.Values("MCP-Protocol-Version")
+		if len(versions) != 1 || versions[0] != Version {
+			deny(400, -32600, "unsupported or missing MCP-Protocol-Version")
+			return
+		}
 	}
 	if req.Method != "notifications/initialized" && len(req.ID) == 0 {
 		deny(400, -32600, "request id required")
@@ -254,7 +261,7 @@ func (g *Gateway) serve(w http.ResponseWriter, r *http.Request) {
 			Name      string          `json:"name"`
 			Arguments json.RawMessage `json:"arguments"`
 		}
-		if json.Unmarshal(req.Params, &p) != nil || p.Name == "" {
+		if json.Unmarshal(req.Params, &p) != nil || strings.TrimSpace(p.Name) == "" {
 			deny(400, -32602, "invalid tool parameters")
 			return
 		}

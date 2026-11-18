@@ -153,3 +153,73 @@ func TestGatewayOriginCaseInsensitiveAndTrailingSlash(t *testing.T) {
 		t.Fatalf("expected 200 for case-insensitive origin with trailing slash, got %d (%s)", rr.Code, rr.Body.String())
 	}
 }
+
+func TestGatewayRejectsDuplicateContentTypeAndProtocolVersionHeaders(t *testing.T) {
+	cfg := Config{
+		Resource: "https://mcp.example",
+		Issuer:   "https://auth.example",
+		Rate:     10,
+		Credentials: map[string]string{
+			"alice": "secret",
+		},
+	}
+	gw := New(cfg, fakeAuth{}, &memoryStore{})
+
+	// Duplicate Content-Type headers
+	req1 := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":1,"method":"ping"}`)))
+	req1.Header.Set("Authorization", "Bearer alice")
+	req1.Header.Add("Content-Type", "application/json")
+	req1.Header.Add("Content-Type", "text/plain")
+	req1.Header.Set("Accept", "application/json, text/event-stream")
+	req1.Header.Set("MCP-Protocol-Version", Version)
+
+	rr1 := httptest.NewRecorder()
+	gw.Handler().ServeHTTP(rr1, req1)
+	if rr1.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("expected 415 for duplicate Content-Type headers, got %d", rr1.Code)
+	}
+
+	// Duplicate MCP-Protocol-Version headers
+	req2 := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":2,"method":"ping"}`)))
+	req2.Header.Set("Authorization", "Bearer alice")
+	req2.Header.Set("Content-Type", "application/json")
+	req2.Header.Set("Accept", "application/json, text/event-stream")
+	req2.Header.Add("MCP-Protocol-Version", Version)
+	req2.Header.Add("MCP-Protocol-Version", "2024-11-05")
+
+	rr2 := httptest.NewRecorder()
+	gw.Handler().ServeHTTP(rr2, req2)
+	if rr2.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for duplicate MCP-Protocol-Version headers, got %d", rr2.Code)
+	}
+}
+
+func TestGatewayRejectsWhitespaceOnlyToolName(t *testing.T) {
+	cfg := Config{
+		Resource: "https://mcp.example",
+		Issuer:   "https://auth.example",
+		Rate:     10,
+		Credentials: map[string]string{
+			"alice": "secret",
+		},
+		Tools: map[string]Rule{
+			"echo": {Scope: "tools:read"},
+		},
+	}
+	gw := New(cfg, fakeAuth{}, &memoryStore{})
+
+	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"   ","arguments":{}}}`)))
+	req.Header.Set("Authorization", "Bearer alice")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("MCP-Protocol-Version", Version)
+
+	rr := httptest.NewRecorder()
+	gw.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for whitespace tool name, got %d (%s)", rr.Code, rr.Body.String())
+	}
+	if !bytes.Contains(rr.Body.Bytes(), []byte("invalid tool parameters")) {
+		t.Fatalf("expected 'invalid tool parameters' error, got %s", rr.Body.String())
+	}
+}
