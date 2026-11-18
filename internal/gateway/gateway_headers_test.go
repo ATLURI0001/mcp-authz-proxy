@@ -223,3 +223,48 @@ func TestGatewayRejectsWhitespaceOnlyToolName(t *testing.T) {
 		t.Fatalf("expected 'invalid tool parameters' error, got %s", rr.Body.String())
 	}
 }
+
+func TestGatewayRejectsMultiOrInvalidApprovalTokenHeaders(t *testing.T) {
+	cfg := Config{
+		Resource: "https://mcp.example",
+		Issuer:   "https://auth.example",
+		Rate:     10,
+		Credentials: map[string]string{
+			"alice": "secret",
+		},
+		Tools: map[string]Rule{
+			"deploy": {Scope: "tools:read", Approval: true},
+		},
+	}
+	memStore := &memoryStore{}
+	gw := New(cfg, fakeAuth{}, memStore)
+
+	// Multiple X-Approval-Token headers
+	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"deploy","arguments":{}}}`)))
+	req.Header.Set("Authorization", "Bearer alice")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("MCP-Protocol-Version", Version)
+	req.Header.Add("X-Approval-Token", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	req.Header.Add("X-Approval-Token", "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210")
+
+	rr := httptest.NewRecorder()
+	gw.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for multiple approval tokens, got %d (%s)", rr.Code, rr.Body.String())
+	}
+
+	// Non-hex characters in approval token
+	reqNonHex := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"deploy","arguments":{}}}`)))
+	reqNonHex.Header.Set("Authorization", "Bearer alice")
+	reqNonHex.Header.Set("Content-Type", "application/json")
+	reqNonHex.Header.Set("Accept", "application/json, text/event-stream")
+	reqNonHex.Header.Set("MCP-Protocol-Version", Version)
+	reqNonHex.Header.Set("X-Approval-Token", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeg") // 'g' is non-hex
+
+	rrNonHex := httptest.NewRecorder()
+	gw.Handler().ServeHTTP(rrNonHex, reqNonHex)
+	if rrNonHex.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for non-hex approval token, got %d (%s)", rrNonHex.Code, rrNonHex.Body.String())
+	}
+}
